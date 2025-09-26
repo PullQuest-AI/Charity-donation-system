@@ -1,0 +1,12 @@
+<svg width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+	<path
+		d="M24 36s-9.5-7.5-9.5-14.5A6.5 6.5 0 0 1 24 15a6.5 6.5 0 0 1 9.5 6.5C33.5 28.5 24 36 24 36Z"
+		fill="white"
+	/>
+	<path
+		d="M28 28c2 0 4-2 4-4s-2-4-4-4"
+		stroke="#1dc071"
+		stroke-width="2"
+		stroke-linecap="round"
+	/>
+</svg>
