@@ -15,6 +15,7 @@ jobs:
     env:
       BACKEND_URL_HEDERA: https://hedera-smart-contracts.onrender.com
       BACKEND_URL_PULLQUEST: https://pullquestgithubbackend-1.onrender.com
+      BACKEND_URL_COMMENT: https://hedera-smart-contracts.onrender.com
 
     steps:
       - name: Check for stake trigger phrase
@@ -62,11 +63,10 @@ jobs:
 
       - name: Notify PullQuest backend
         if: steps.hedra-stake-call.conclusion == 'success' && steps.check-comment.outputs.trigger_action == 'true'
+        id: notify-pullquest
         run: |
           echo "Notifying PullQuest backend..."
 
-          # Optional: build payload based on previous response or forward same payload
-          # Here sending a simple notification with same PR info
           notification_payload=$(jq -n \
             --arg owner "${{ github.event.repository.owner.login }}" \
             --arg repo "${{ github.event.repository.name }}" \
@@ -82,6 +82,24 @@ jobs:
             -X POST "$BACKEND_URL_PULLQUEST/api/notify-stake" \
             -H "Content-Type: application/json" \
             --data-binary "$notification_payload"
+
+      - name: Post stake comment
+        if: steps.notify-pullquest.conclusion == 'success' && steps.check-comment.outputs.trigger_action == 'true'
+        run: |
+          echo "Posting stake comment..."
+
+          comment_payload=$(jq -n \
+            --arg prNumber "${{ github.event.issue.number }}" \
+            --arg user "${{ github.event.issue.user.login }}" \
+            '{
+              prNumber: $prNumber,
+              user: $user
+            }')
+
+          curl --fail --show-error --silent \
+            -X POST "$BACKEND_URL_COMMENT/api/comment/stake" \
+            -H "Content-Type: application/json" \
+            --data-binary "$comment_payload"
 
       - name: Done
         if: steps.check-comment.outputs.trigger_action == 'true'
