@@ -79,23 +79,6 @@ jobs:
             exit 1
           fi
 
-      - name: Extract transaction details from Hedera response
-        id: extract-details
-        if: steps.hedera-xp-call.outcome == 'success' && steps.check-comment.outputs.trigger_action == 'true'
-        run: |
-          hedera_response="${{ steps.hedera-xp-call.outputs.hedera_xp_response }}"
-          
-          # Extract txHash and totalXp from the response using jq
-          txHash=$(echo "$hedera_response" | jq -r '.data.txHash // "N/A"')
-          totalXp=$(echo "$hedera_response" | jq -r '.data.totalXp // "0"')
-          
-          echo "txHash=$txHash" >> $GITHUB_OUTPUT
-          echo "totalXp=$totalXp" >> $GITHUB_OUTPUT
-          
-          echo "📋 Extracted details:"
-          echo "- Transaction Hash: $txHash"
-          echo "- Total XP: $totalXp"
-
       - name: Post XP award comment
         if: steps.hedera-xp-call.outcome == 'success' && steps.check-comment.outputs.trigger_action == 'true'
         run: |
