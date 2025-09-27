@@ -15,8 +15,7 @@ jobs:
     env:
       BACKEND_URL_HEDERA: https://hedera-smart-contracts.onrender.com
       BACKEND_URL_PULLQUEST: https://pullquestgithubbackend-1.onrender.com
-      BACKEND_URL_COMMENT: https://hedera-smart-contracts.onrender.com
-
+      
     steps:
       - name: Check for stake trigger phrase
         id: check-comment
@@ -54,50 +53,54 @@ jobs:
           echo "📦 Payload for Hedera stake call:"
           echo "$payload"
 
+          echo "🔄 Making request to Hedera API..."
           response=$(curl --fail --show-error --silent \
             -X POST "$BACKEND_URL_HEDERA/api/stake" \
             -H "Content-Type: application/json" \
-            --data-binary "$payload")
+            --data-binary "$payload" || echo "HEDERA_API_FAILED")
 
+          echo "📥 Hedera API Response: $response"
           echo "hedra_response=$response" >> $GITHUB_OUTPUT
+          
+          # Check if Hedera API call was successful
+          if [[ "$response" == "HEDERA_API_FAILED" ]]; then
+            echo "❌ Hedera API call failed"
+            exit 1
+          fi
 
-      - name: Notify PullQuest backend
-        if: steps.hedra-stake-call.conclusion == 'success' && steps.check-comment.outputs.trigger_action == 'true'
-        id: notify-pullquest
+      - name: Post stake comment
+        # Only call PullQuest backend after successful Hedera stake
+        if: steps.hedra-stake-call.outcome == 'success' && steps.check-comment.outputs.trigger_action == 'true'
         run: |
-          echo "Notifying PullQuest backend..."
+          echo "💬 Posting stake comment..."
 
-          notification_payload=$(jq -n \
+          # Create payload matching the exact structure that works
+          comment_payload=$(jq -n \
             --arg owner "${{ github.event.repository.owner.login }}" \
             --arg repo "${{ github.event.repository.name }}" \
             --argjson prNumber "${{ github.event.issue.number }}" \
+            --arg user "${{ github.event.issue.user.login }}" \
             '{
               owner: $owner,
               repo: $repo,
               prNumber: $prNumber,
-              message: "Stake request processed successfully"
+              user: $user
             }')
 
-          curl --fail --show-error --silent \
+          echo "📦 Comment payload:"
+          echo "$comment_payload"
+
+          echo "🔄 Making request to post comment..."
+          final_response=$(curl --fail --show-error --silent \
             -X POST "$BACKEND_URL_PULLQUEST/api/comment/stake" \
             -H "Content-Type: application/json" \
-            --data-binary "$notification_payload"
-
-      - name: Post stake comment
-        if: steps.notify-pullquest.conclusion == 'success' && steps.check-comment.outputs.trigger_action == 'true'
-        run: |
-          echo "Posting stake comment..."
-
-          comment_payload=$(jq -n \
-            --arg prNumber "${{ github.event.issue.number }}" \
-            --arg user "${{ github.event.issue.user.login }}" \
-            --arg owner "${{ github.event.repository.owner.login }}" \
-            --arg repo "${{ github.event.repository.name }}" \
-            '{
-              prNumber: $prNumber,
-              user: $user,
-              owner: $owner,
-              repo: $repo
-            }')
-
-          curl --fail --
+            --data-binary "$comment_payload" || echo "COMMENT_POST_FAILED")
+          
+          echo "📥 API Response: $final_response"
+          
+          if [[ "$final_response" == "COMMENT_POST_FAILED" ]]; then
+            echo "❌ Comment posting failed"
+            exit 1
+          else
+            echo "✅ Workflow completed successfully!"
+          fi
