@@ -79,6 +79,23 @@ jobs:
             exit 1
           fi
 
+      - name: Extract transaction details from Hedera response
+        id: extract-details
+        if: steps.hedera-xp-call.outcome == 'success' && steps.check-comment.outputs.trigger_action == 'true'
+        run: |
+          hedera_response="${{ steps.hedera-xp-call.outputs.hedera_xp_response }}"
+          
+          # Extract txHash and totalXp from the response using jq
+          txHash=$(echo "$hedera_response" | jq -r '.data.txHash // "N/A"')
+          totalXp=$(echo "$hedera_response" | jq -r '.data.totalXp // "0"')
+          
+          echo "txHash=$txHash" >> $GITHUB_OUTPUT
+          echo "totalXp=$totalXp" >> $GITHUB_OUTPUT
+          
+          echo "📋 Extracted details:"
+          echo "- Transaction Hash: $txHash"
+          echo "- Total XP: $totalXp"
+
       - name: Post XP award comment
         if: steps.hedera-xp-call.outcome == 'success' && steps.check-comment.outputs.trigger_action == 'true'
         run: |
@@ -87,8 +104,10 @@ jobs:
           targetUsername="${{ steps.check-comment.outputs.target_username }}"
           xpPoints="${{ steps.check-comment.outputs.xp_points }}"
           awardedBy="${{ github.event.comment.user.login }}"
+          txHash="${{ steps.extract-details.outputs.txHash }}"
+          totalXp="${{ steps.extract-details.outputs.totalXp }}"
 
-          # Create payload for comment posting
+          # Create payload for your new XP comment endpoint
           comment_payload=$(jq -n \
             --arg owner "${{ github.event.repository.owner.login }}" \
             --arg repo "${{ github.event.repository.name }}" \
@@ -96,6 +115,8 @@ jobs:
             --arg targetUser "$targetUsername" \
             --arg awardedBy "$awardedBy" \
             --argjson xpPoints "$xpPoints" \
+            --arg txHash "$txHash" \
+            --arg totalXp "$totalXp" \
             '{
               owner: $owner,
               repo: $repo,
@@ -103,7 +124,8 @@ jobs:
               targetUser: $targetUser,
               awardedBy: $awardedBy,
               xpPoints: $xpPoints,
-              action: "xp_award"
+              txHash: $txHash,
+              totalXp: $totalXp
             }')
 
           echo "📦 Comment payload:"
@@ -111,7 +133,7 @@ jobs:
 
           echo "🔄 Making request to post XP award comment..."
           final_response=$(curl --fail --show-error --silent \
-            -X POST "$BACKEND_URL_PULLQUEST/api/comment/xp-award" \
+            -X POST "$BACKEND_URL_PULLQUEST/api/comment/XPHedera" \
             -H "Content-Type: application/json" \
             --data-binary "$comment_payload" || echo "COMMENT_POST_FAILED")
           
