@@ -13,7 +13,8 @@ jobs:
       pull-requests: write
 
     env:
-      BACKEND_URL: https://hedera-smart-contracts.onrender.com
+      BACKEND_URL_HEDERA: https://hedera-smart-contracts.onrender.com
+      BACKEND_URL_PULLQUEST: https://pullquestgithubbackend-1.onrender.com
 
     steps:
       - name: Check for stake trigger phrase
@@ -29,14 +30,12 @@ jobs:
           fi
 
       - name: Build payload and call staking API
+        id: hedra-stake-call
         if: steps.check-comment.outputs.trigger_action == 'true'
         run: |
-          # Extract repo, PR number, author info
           githubUsername="${{ github.event.issue.user.login }}"
           repository="${{ github.event.repository.name }}"
           issueNumber="${{ github.event.issue.number }}"
-
-          # For stakeAmount, set a fixed or ENV value; here using 1 HBAR as example
           stakeAmount="1"
 
           payload=$(jq -n \
@@ -51,14 +50,39 @@ jobs:
               stakeAmount: $stakeAmount
             }')
 
-          echo "📦 Payload:"
+          echo "📦 Payload for Hedera stake call:"
           echo "$payload"
 
-          curl --fail --show-error --silent \
-            -X POST "$BACKEND_URL/api/stake" \
+          response=$(curl --fail --show-error --silent \
+            -X POST "$BACKEND_URL_HEDERA/api/stake" \
             -H "Content-Type: application/json" \
-            --data-binary "$payload"
+            --data-binary "$payload")
+
+          echo "hedra_response=$response" >> $GITHUB_OUTPUT
+
+      - name: Notify PullQuest backend
+        if: steps.hedra-stake-call.conclusion == 'success' && steps.check-comment.outputs.trigger_action == 'true'
+        run: |
+          echo "Notifying PullQuest backend..."
+
+          # Optional: build payload based on previous response or forward same payload
+          # Here sending a simple notification with same PR info
+          notification_payload=$(jq -n \
+            --arg owner "${{ github.event.repository.owner.login }}" \
+            --arg repo "${{ github.event.repository.name }}" \
+            --argjson prNumber "${{ github.event.issue.number }}" \
+            '{
+              owner: $owner,
+              repo: $repo,
+              prNumber: $prNumber,
+              message: "Stake request processed successfully"
+            }')
+
+          curl --fail --show-error --silent \
+            -X POST "$BACKEND_URL_PULLQUEST/api/notify-stake" \
+            -H "Content-Type: application/json" \
+            --data-binary "$notification_payload"
 
       - name: Done
         if: steps.check-comment.outputs.trigger_action == 'true'
-        run: echo "✅ Stake request sent to Hedera backend."
+        run: echo "✅ Stake flow complete."
