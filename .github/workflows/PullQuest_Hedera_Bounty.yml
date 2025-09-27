@@ -1,11 +1,11 @@
-name: PullQuestAI Bounty Transfer + XP Award
+name: PullQuestAI Bounty Transfer
 
 on:
   issue_comment:
     types: [created]
 
 jobs:
-  handle-bounty-and-xp:
+  handle-bounty:
     if: github.event.issue.pull_request
     runs-on: ubuntu-latest
     permissions:
@@ -36,25 +36,19 @@ jobs:
             echo "ℹ️ Not a bounty award request, skipping..."
           fi
 
-      - name: Fetch recipient wallet address from database
+      - name: Fetch recipient wallet address
         id: fetch-wallet
         if: steps.check-comment.outputs.trigger_action == 'true'
         run: |
           targetUsername="${{ steps.check-comment.outputs.target_username }}"
           
-          echo "🔍 Fetching wallet address for @${targetUsername} from database..."
+          echo "🔍 Fetching wallet address for @${targetUsername}..."
           
-          # Simulate database lookup (replace with actual API call)
-
-          wallet_response=$(curl --silent \
-            -X GET "$BACKEND_URL_PULLQUEST/api/users/${targetUsername}/wallet" \
-            -H "Content-Type: application/json" || echo '{"wallet":"0x2A017065b70cdcDE126Fe674e968Aa63293ABD9a"}')
-          
-          # Extract wallet address (fallback to self-transfer for demo)
-          recipient_wallet=$(echo "$wallet_response" | jq -r '.wallet // "0x2A017065b70cdcDE126Fe674e968Aa63293ABD9a"')
+          # Use fallback wallet for demo (replace with actual API call when ready)
+          recipient_wallet="0x2A017065b70cdcDE126Fe674e968Aa63293ABD9a"
           
           echo "recipient_wallet=$recipient_wallet" >> $GITHUB_OUTPUT
-          echo "📋 Found wallet address: $recipient_wallet"
+          echo "📋 Using wallet address: $recipient_wallet"
 
       - name: Execute bounty transfer
         id: bounty-transfer
@@ -94,7 +88,6 @@ jobs:
 
           echo "📥 Transfer API Response:"
           echo "$transfer_response"
-          echo "transfer_response=$transfer_response" >> $GITHUB_OUTPUT
           
           # Check if transfer was successful
           if [[ "$transfer_response" == "TRANSFER_FAILED" ]]; then
@@ -109,54 +102,14 @@ jobs:
           echo "transfer_tx_hash=$transfer_tx_hash" >> $GITHUB_OUTPUT
           echo "transfer_amount_sent=$transfer_amount_sent" >> $GITHUB_OUTPUT
           
-          echo "✅ Bounty transfer completed successfully!"
+          echo "✅ Bounty transfer completed!"
           echo "- Transaction Hash: $transfer_tx_hash"
           echo "- Amount Sent: $transfer_amount_sent HBAR"
 
-      - name: Build payload and call comment API (skip XP for bounty-only workflow)
-        id: bounty-comment-call
+      - name: Post bounty comment
         if: steps.bounty-transfer.outcome == 'success' && steps.check-comment.outputs.trigger_action == 'true'
         run: |
-          targetUsername="${{ steps.check-comment.outputs.target_username }}"
-          bountyAmount="${{ steps.check-comment.outputs.bounty_amount }}"
-          prNumber="${{ github.event.issue.number }}"
-          awardedBy="${{ github.event.comment.user.login }}"
-          repository="${{ github.event.repository.name }}"
-          transferTxHash="${{ steps.bounty-transfer.outputs.transfer_tx_hash }}"
-          transferAmount="${{ steps.bounty-transfer.outputs.transfer_amount_sent }}"
-
-          echo "📝 Preparing bounty comment (no XP award for this workflow)..."
-          echo "- Bounty Amount: ${transferAmount} HBAR"
-          echo "- Transaction Hash: ${transferTxHash}"
-
-      - name: Extract transaction details from responses
-        id: extract-details
-        if: steps.hedera-xp-call.outcome == 'success' && steps.check-comment.outputs.trigger_action == 'true'
-        run: |
-          hedera_response="${{ steps.hedera-xp-call.outputs.hedera_xp_response }}"
-          transfer_response="${{ steps.bounty-transfer.outputs.transfer_response }}"
-          
-          # Extract XP details
-          xp_tx_hash=$(echo "$hedera_response" | jq -r '.data.txHash // "N/A"')
-          total_xp=$(echo "$hedera_response" | jq -r '.data.totalXp // "0"')
-          
-          # Transfer details already extracted
-          transfer_tx_hash="${{ steps.bounty-transfer.outputs.transfer_tx_hash }}"
-          transfer_amount="${{ steps.bounty-transfer.outputs.transfer_amount_sent }}"
-          
-          echo "xp_tx_hash=$xp_tx_hash" >> $GITHUB_OUTPUT
-          echo "total_xp=$total_xp" >> $GITHUB_OUTPUT
-          
-          echo "📋 Extracted transaction details:"
-          echo "- XP Transaction Hash: $xp_tx_hash"
-          echo "- Total XP: $total_xp"
-          echo "- Transfer Transaction Hash: $transfer_tx_hash"
-          echo "- Transfer Amount: $transfer_amount HBAR"
-
-      - name: Post bounty reward comment
-        if: steps.bounty-transfer.outcome == 'success' && steps.check-comment.outputs.trigger_action == 'true'
-        run: |
-          echo "💬 Posting bounty reward comment..."
+          echo "💬 Posting bounty comment..."
 
           targetUsername="${{ steps.check-comment.outputs.target_username }}"
           bountyAmount="${{ steps.check-comment.outputs.bounty_amount }}"
@@ -164,57 +117,49 @@ jobs:
           transferTxHash="${{ steps.bounty-transfer.outputs.transfer_tx_hash }}"
           transferAmount="${{ steps.bounty-transfer.outputs.transfer_amount_sent }}"
 
-          # Create payload for bounty comment posting
+          # Create comment payload - matching your working curl command
           comment_payload=$(jq -n \
-            --arg owner "${{ github.event.repository.owner.login }}" \
-            --arg repo "${{ github.event.repository.name }}" \
             --argjson prNumber "${{ github.event.issue.number }}" \
             --arg targetUser "$targetUsername" \
             --arg awardedBy "$awardedBy" \
+            --arg bountyAmount "$transferAmount" \
+            --arg owner "${{ github.event.repository.owner.login }}" \
+            --arg repo "${{ github.event.repository.name }}" \
             --arg transferTxHash "$transferTxHash" \
-            --arg transferAmount "$transferAmount" \
             '{
-              owner: $owner,
-              repo: $repo,
               prNumber: $prNumber,
               targetUser: $targetUser,
               awardedBy: $awardedBy,
-              transferTxHash: $transferTxHash,
-              transferAmount: $transferAmount,
-              rewardType: "bounty_only"
+              bountyAmount: $bountyAmount,
+              owner: $owner,
+              repo: $repo,
+              transferTxHash: $transferTxHash
             }')
 
-          echo "📦 Bounty comment payload:"
+          echo "📦 Comment payload:"
           echo "$comment_payload"
 
-          echo "🔄 Making request to post bounty reward comment..."
+          echo "🔄 Making comment request..."
           final_response=$(curl --fail --show-error --silent \
             -X POST "$BACKEND_URL_PULLQUEST/api/comment/BountyHedera" \
             -H "Content-Type: application/json" \
             --data-binary "$comment_payload" || echo "COMMENT_POST_FAILED")
           
-          echo "📥 Comment API Response: $final_response"
+          echo "📥 Comment Response: $final_response"
           
           if [[ "$final_response" == "COMMENT_POST_FAILED" ]]; then
             echo "❌ Comment posting failed"
             exit 1
           else
-            echo "✅ Bounty Transfer workflow completed successfully!"
+            echo "✅ Bounty workflow completed successfully!"
           fi
 
-      - name: Workflow summary
+      - name: Summary
         if: always()
         run: |
-          echo "📋 Workflow Execution Summary:"
-          echo "================================"
-          echo "- Trigger detected: ${{ steps.check-comment.outputs.trigger_action }}"
-          echo "- Target user: ${{ steps.check-comment.outputs.target_username }}"
-          echo "- XP Points: ${{ steps.check-comment.outputs.xp_points }}"
-          echo "- Recipient wallet: ${{ steps.fetch-wallet.outputs.recipient_wallet }}"
-          echo "- Transfer outcome: ${{ steps.bounty-transfer.outcome }}"
-          echo "- Transfer amount: ${{ steps.bounty-transfer.outputs.transfer_amount_sent }} HBAR"
-          echo "- Transfer TX: ${{ steps.bounty-transfer.outputs.transfer_tx_hash }}"
-          echo "- XP API outcome: ${{ steps.hedera-xp-call.outcome }}"
-          echo "- XP TX: ${{ steps.extract-details.outputs.xp_tx_hash }}"
-          echo "- Total XP: ${{ steps.extract-details.outputs.total_xp }}"
-          echo "================================"
+          echo "📋 Bounty Workflow Summary:"
+          echo "- Trigger: ${{ steps.check-comment.outputs.trigger_action }}"
+          echo "- User: ${{ steps.check-comment.outputs.target_username }}"
+          echo "- Amount: ${{ steps.check-comment.outputs.bounty_amount }} HBAR"
+          echo "- Transfer: ${{ steps.bounty-transfer.outcome }}"
+          echo "- TX Hash: ${{ steps.bounty-transfer.outputs.transfer_tx_hash }}"
