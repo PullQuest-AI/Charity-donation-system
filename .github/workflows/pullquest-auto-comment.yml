@@ -13,7 +13,7 @@ jobs:
       pull-requests: write
 
     env:
-      BACKEND_URL: https://pullquestgithubbackend.onrender.com
+      BACKEND_URL: https://pullquestgithubbackend-1.onrender.com 
 
     steps:
       - name: Show context

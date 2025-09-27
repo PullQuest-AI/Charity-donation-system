@@ -32,7 +32,7 @@ jobs:
           echo "🚀 Starting comprehensive analysis for issue #$ISSUE_NUMBER"
           echo "🏷️ Add labels to PRs: $ADD_LABELS_TO_PRS"
           
-          curl -X POST "https://pullquestgithubbackend.onrender.com/api/github/analyze-issue" \
+          curl -X POST "https://pullquestgithubbackend-1.onrender.com /api/github/analyze-issue" \
             -H "Content-Type: application/json" \
             -d "{
               \"owner\": \"${{ github.repository_owner }}\",

@@ -14,7 +14,7 @@ jobs:
       pull-requests: write       # needed only if you later update the PR status
 
     env:
-      BACKEND_URL: https://pullquestgithubbackend.onrender.com
+      BACKEND_URL: https://pullquestgithubbackend-1.onrender.com 
 
     steps:
       - name: Debug – print event info

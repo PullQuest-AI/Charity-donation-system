@@ -14,7 +14,7 @@ jobs:
       pull-requests: read
       issues: read
     env:
-      BACKEND_URL: https://pullquestgithubbackend.onrender.com
+      BACKEND_URL: https://pullquestgithubbackend-1.onrender.com 
     
     steps:
     - name: Check if comment mentions @pullquestai and requests XP
