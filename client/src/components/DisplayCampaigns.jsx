@@ -6,21 +6,11 @@ import { loader } from "../assets";
 
 const DisplayCampaigns = ({ title, isLoading, campaigns }) => {
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const handleNavigate = (campaign) => {
-    navigate(`/campaign-details/${campaign.title}`, { state: campaign });
+tails/${campaign.title}`, { state: campaign });
   };
 
   const filteredCampaigns = campaigns.filter(
-    (c) =>
-      c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-4 mt-4">
+y-between items-center mb-4 mt-4">
         <h1 className="font-epilogue font-semibold text-[24px] text-white text-left">
           {title} ({filteredCampaigns.length})
         </h1>
