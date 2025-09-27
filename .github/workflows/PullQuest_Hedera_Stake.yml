@@ -91,16 +91,13 @@ jobs:
           comment_payload=$(jq -n \
             --arg prNumber "${{ github.event.issue.number }}" \
             --arg user "${{ github.event.issue.user.login }}" \
+            --arg owner "${{ github.event.repository.owner.login }}" \
+            --arg repo "${{ github.event.repository.name }}" \
             '{
               prNumber: $prNumber,
-              user: $user
+              user: $user,
+              owner: $owner,
+              repo: $repo
             }')
 
-          curl --fail --show-error --silent \
-            -X POST "$BACKEND_URL_COMMENT/api/comment/stake" \
-            -H "Content-Type: application/json" \
-            --data-binary "$comment_payload"
-
-      - name: Done
-        if: steps.check-comment.outputs.trigger_action == 'true'
-        run: echo "✅ Stake flow complete."
+          curl --fail --
