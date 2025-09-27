@@ -79,7 +79,7 @@ jobs:
             }')
 
           curl --fail --show-error --silent \
-            -X POST "$BACKEND_URL_PULLQUEST/api/notify-stake" \
+            -X POST "$BACKEND_URL_PULLQUEST/api/comment/stake" \
             -H "Content-Type: application/json" \
             --data-binary "$notification_payload"
 
