@@ -1,0 +1,125 @@
+name: PullQuestAI XP Award
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  handle-xp-award:
+    if: github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    env:
+      BACKEND_URL_HEDERA: https://hedera-smart-contracts.onrender.com
+      BACKEND_URL_PULLQUEST: https://pullquestgithubbackend-1.onrender.com
+      
+    steps:
+      - name: Check for XP award trigger phrase
+        id: check-comment
+        run: |
+          comment_body="${{ github.event.comment.body }}"
+          echo "Comment body: $comment_body"
+          
+          # Check for XP award pattern: @pullquestai add 100xp to @username
+          if [[ "$comment_body" =~ @pullquestai[[:space:]]+add[[:space:]]+([0-9]+)xp[[:space:]]+to[[:space:]]+@([a-zA-Z0-9_-]+) ]]; then
+            xp_points="${BASH_REMATCH[1]}"
+            target_username="${BASH_REMATCH[2]}"
+            echo "trigger_action=true" >> $GITHUB_OUTPUT
+            echo "xp_points=$xp_points" >> $GITHUB_OUTPUT
+            echo "target_username=$target_username" >> $GITHUB_OUTPUT
+            echo "✅ XP award request detected: ${xp_points}XP to @${target_username}"
+          else
+            echo "trigger_action=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Not an XP award request, skipping..."
+          fi
+
+      - name: Build payload and call XP addition API
+        id: hedera-xp-call
+        if: steps.check-comment.outputs.trigger_action == 'true'
+        run: |
+          targetUsername="${{ steps.check-comment.outputs.target_username }}"
+          xpPoints="${{ steps.check-comment.outputs.xp_points }}"
+          prNumber="${{ github.event.issue.number }}"
+          awardedBy="${{ github.event.comment.user.login }}"
+          repository="${{ github.event.repository.name }}"
+
+          # Create custom message
+          customMessage="XP awarded by @${awardedBy} in ${repository} for contribution"
+
+          payload=$(jq -n \
+            --arg githubUsername "$targetUsername" \
+            --argjson prNumber "$prNumber" \
+            --argjson xpPoints "$xpPoints" \
+            --arg message "$customMessage" \
+            '{
+              githubUsername: $githubUsername,
+              prNumber: $prNumber,
+              xpPoints: $xpPoints,
+              message: $message
+            }')
+
+          echo "📦 Payload for Hedera XP addition call:"
+          echo "$payload"
+
+          echo "🔄 Making request to Hedera XP API..."
+          response=$(curl --fail --show-error --silent \
+            -X POST "$BACKEND_URL_HEDERA/api/add-xp" \
+            -H "Content-Type: application/json" \
+            --data-binary "$payload" || echo "HEDERA_XP_API_FAILED")
+
+          echo "📥 Hedera XP API Response: $response"
+          echo "hedera_xp_response=$response" >> $GITHUB_OUTPUT
+          
+          # Check if Hedera XP API call was successful
+          if [[ "$response" == "HEDERA_XP_API_FAILED" ]]; then
+            echo "❌ Hedera XP API call failed"
+            exit 1
+          fi
+
+      - name: Post XP award comment
+        if: steps.hedera-xp-call.outcome == 'success' && steps.check-comment.outputs.trigger_action == 'true'
+        run: |
+          echo "💬 Posting XP award comment..."
+
+          targetUsername="${{ steps.check-comment.outputs.target_username }}"
+          xpPoints="${{ steps.check-comment.outputs.xp_points }}"
+          awardedBy="${{ github.event.comment.user.login }}"
+
+          # Create payload for comment posting
+          comment_payload=$(jq -n \
+            --arg owner "${{ github.event.repository.owner.login }}" \
+            --arg repo "${{ github.event.repository.name }}" \
+            --argjson prNumber "${{ github.event.issue.number }}" \
+            --arg targetUser "$targetUsername" \
+            --arg awardedBy "$awardedBy" \
+            --argjson xpPoints "$xpPoints" \
+            '{
+              owner: $owner,
+              repo: $repo,
+              prNumber: $prNumber,
+              targetUser: $targetUser,
+              awardedBy: $awardedBy,
+              xpPoints: $xpPoints,
+              action: "xp_award"
+            }')
+
+          echo "📦 Comment payload:"
+          echo "$comment_payload"
+
+          echo "🔄 Making request to post XP award comment..."
+          final_response=$(curl --fail --show-error --silent \
+            -X POST "$BACKEND_URL_PULLQUEST/api/comment/xp-award" \
+            -H "Content-Type: application/json" \
+            --data-binary "$comment_payload" || echo "COMMENT_POST_FAILED")
+          
+          echo "📥 Comment API Response: $final_response"
+          
+          if [[ "$final_response" == "COMMENT_POST_FAILED" ]]; then
+            echo "❌ Comment posting failed"
+            exit 1
+          else
+            echo "✅ XP Award workflow completed successfully!"
+          fi
