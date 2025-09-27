@@ -1,0 +1,49 @@
+# .github/workflows/ai-pr-review.yml
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize] # Run for new PRs and new commits to existing PRs
+    branches: [main]
+
+jobs:
+  ai_review:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write # Required for the backend to post comments
+
+    env:
+      BACKEND_URL: https://pullquestgithubbackend-1.onrender.com # Your backend URL
+
+    steps:
+      # This step is only needed to access the GitHub context variables.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Build the simple JSON payload and send it to your backend.
+      - name: Trigger AI Full Review
+        run: |
+          # The payload only needs owner, repo, and prNumber.
+          # The backend will fetch the diff and other details itself.
+          payload=$(jq -n \
+            --arg owner    "${{ github.repository_owner }}" \
+            --arg repo     "${{ github.event.repository.name }}" \
+            --argjson prNumber "${{ github.event.pull_request.number }}" \
+            '{ owner: $owner,
+               repo: $repo,
+               prNumber: $prNumber }')
+
+          echo "📦 Payload being sent to /api/hedera/full-review:"
+          echo "$payload"
+
+          # Call the correct endpoint with the simplified payload.
+          curl --fail --show-error --silent \
+               -X POST "$BACKEND_URL/api/hedera/full-review" \
+               -H "Content-Type: application/json" \
+               --data-binary "$payload"
+
+      - name: Done
+        if: success()
+        run: echo "🎉 Workflow complete — AI review has been triggered."

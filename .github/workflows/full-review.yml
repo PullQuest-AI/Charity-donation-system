@@ -1,0 +1,63 @@
+# .github/workflows/manual-hedera-review.yml
+name: PullQuestAI Hedera Review
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  handle-hedera-review:
+    # Only run on pull request comments
+    if: github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Added permission for the backend to post comments
+
+    env:
+      BACKEND_URL: https://pullquestgithubbackend-1.onrender.com # Your backend URL
+
+    steps:
+      - name: Check for trigger phrase
+        id: check-comment
+        run: |
+          comment_body="${{ github.event.comment.body }}"
+          if [[ "$comment_body" == *"@pullquestai hedera review"* ]]; then
+            echo "trigger_action=true" >> $GITHUB_OUTPUT
+            echo "✅ Hedera review request detected!"
+          else
+            echo "trigger_action=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Not a hedera review request, skipping..."
+          fi
+
+      - name: Build payload and notify backend
+        if: steps.check-comment.outputs.trigger_action == 'true'
+        run: |
+          # Assemble the payload required by the /ai-pr-review endpoint
+          payload=$(jq -n \
+            --arg owner       "${{ github.event.repository.owner.login }}" \
+            --arg repo        "${{ github.event.repository.name }}" \
+            --argjson prNumber "${{ github.event.issue.number }}" \
+            --arg author      "${{ github.event.issue.user.login }}" \
+            --arg githubToken "${{ secrets.GITHUB_TOKEN }}" \
+            '{
+              owner: $owner,
+              repo: $repo,
+              prNumber: $prNumber,
+              author: $author,
+              githubToken: $githubToken
+            }')
+
+          echo "📦 Payload being sent:"
+          # Avoid logging the actual token for security
+          echo "$payload" | jq 'del(.githubToken) | . + {githubToken: "REDACTED"}'
+
+          # Send the request to the backend
+          curl --fail --show-error --silent \
+            -X POST "$BACKEND_URL/api/hedera/ai-pr-review" \
+            -H "Content-Type: application/json" \
+            --data-binary "$payload"
+
+      - name: Done
+        if: steps.check-comment.outputs.trigger_action == 'true'
+        run: echo "✅ Backend notified for Hedera-powered AI review."
